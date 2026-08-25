@@ -171,7 +171,7 @@
   </div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-library/0.20.0/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -337,6 +337,10 @@
 
   async function startScan(){
     const statusEl = document.getElementById("scan-status");
+    if (typeof ZXing === "undefined"){
+      statusEl.textContent = "Scanner library failed to load — check your connection and reload the page.";
+      return;
+    }
     try{
       const hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
@@ -360,7 +364,15 @@
         }
       });
     } catch(e){
-      statusEl.textContent = "Camera unavailable — use Paste text instead.";
+      const name = (e && e.name) ? e.name : "Error";
+      const msg = (e && e.message) ? e.message : String(e);
+      if (name === "NotAllowedError"){
+        statusEl.textContent = "Camera permission denied — enable it in Settings > Safari > Camera, then reload.";
+      } else if (name === "NotFoundError"){
+        statusEl.textContent = "No camera found on this device.";
+      } else {
+        statusEl.textContent = `Camera error (${name}): ${msg}`;
+      }
       document.getElementById("btnStart").disabled = false;
       document.getElementById("btnStop").disabled = true;
     }
