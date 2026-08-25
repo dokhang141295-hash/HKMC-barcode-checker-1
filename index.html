@@ -349,14 +349,13 @@
         ZXing.BarcodeFormat.CODE_128
       ]);
       codeReader = new ZXing.BrowserMultiFormatReader(hints);
-      const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
-      const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length-1];
       statusEl.textContent = "Scanning…";
       document.getElementById("btnStart").disabled = true;
       document.getElementById("btnStop").disabled = false;
       scanning = true;
 
-      codeReader.decodeFromVideoDevice(backCam ? backCam.deviceId : undefined, "video", (result, err) => {
+      const constraints = { video: { facingMode: { ideal: "environment" } } };
+      codeReader.decodeFromConstraints(constraints, "video", (result, err) => {
         if (result && scanning){
           statusEl.textContent = "Captured ✓";
           runCheck(result.getText());
