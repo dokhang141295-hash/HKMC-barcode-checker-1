@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Part Barcode Checker</title>
+<style>
+  :root{
+    --ink:#0f1b2b;
+    --panel:#152436;
+    --panel-2:#1c3049;
+    --line:#2c4159;
+    --steel:#7e97b3;
+    --amber:#e8a23d;
+    --amber-dim:#8a6a35;
+    --ok:#3fb37f;
+    --fail:#e0584f;
+    --paper:#f4efe1;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--ink);color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  body{padding-bottom:40px;}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;}
+
+  header{
+    padding:22px 18px 16px;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:5;
+    background:linear-gradient(180deg,var(--ink) 80%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  header .eyebrow{
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--amber); font-weight:600; margin-bottom:4px;
+  }
+  header h1{margin:0; font-size:21px; font-weight:650; letter-spacing:-.01em;}
+  header p{margin:4px 0 0; font-size:13px; color:var(--steel);}
+
+  main{padding:16px 16px 8px; max-width:640px; margin:0 auto;}
+
+  .tabs{display:flex; gap:8px; margin:14px 0 16px;}
+  .tab{
+    flex:1; padding:10px 0; text-align:center; font-size:13px; font-weight:600;
+    border:1px solid var(--line); border-radius:10px; background:var(--panel);
+    color:var(--steel); cursor:pointer; transition:.15s;
+  }
+  .tab.active{background:var(--amber); color:#1a1200; border-color:var(--amber);}
+
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:14px;
+  }
+  .card h2{
+    font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--steel); margin:0 0 12px; font-weight:600;
+  }
+
+  #scanner-wrap{position:relative; border-radius:12px; overflow:hidden; background:#000; aspect-ratio:1/1;}
+  #scanner-wrap video{width:100%; height:100%; object-fit:cover;}
+  #reticle{
+    position:absolute; inset:14%; border:2px solid var(--amber); border-radius:10px;
+    box-shadow:0 0 0 999px rgba(0,0,0,.35);
+    pointer-events:none;
+  }
+  #scan-status{
+    position:absolute; left:0; right:0; bottom:10px; text-align:center;
+    font-size:12px; color:var(--paper); background:rgba(0,0,0,.5);
+    margin:0 12px; padding:6px 8px; border-radius:8px;
+  }
+  .scan-controls{display:flex; gap:10px; margin-top:12px;}
+
+  textarea{
+    width:100%; min-height:88px; resize:vertical;
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    color:var(--paper); padding:12px; font-size:14px; line-height:1.5;
+  }
+  textarea:focus{outline:2px solid var(--amber); outline-offset:1px;}
+
+  button{
+    font:inherit; font-weight:600; font-size:14px; border:none; border-radius:10px;
+    padding:12px 16px; cursor:pointer; transition:.15s;
+  }
+  .btn-primary{background:var(--amber); color:#1a1200;}
+  .btn-primary:active{transform:scale(.98);}
+  .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--paper);}
+  .btn-ghost:active{transform:scale(.98);}
+  button:disabled{opacity:.4; cursor:default;}
+
+  .raw-highlight{
+    background:var(--panel-2); border:1px solid var(--line); border-radius:10px;
+    padding:12px; font-size:13.5px; line-height:1.7; word-break:break-all;
+  }
+  .ctl{color:var(--amber); font-weight:700;}
+  .ctl sub{font-size:9px; color:var(--steel); font-weight:600;}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  td{padding:9px 6px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  .col-item{color:var(--steel); width:34%; font-weight:500;}
+  .col-result{width:15%; font-weight:700; text-align:center;}
+  .col-data{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;}
+  .r-ok{color:var(--ok);}
+  .r-fail{color:var(--fail);}
+  .group-head td{padding-top:14px; color:var(--amber); font-size:11px; letter-spacing:.08em; text-transform:uppercase; border-bottom:none;}
+
+  .empty{color:var(--steel); font-size:13px; text-align:center; padding:24px 8px;}
+  .err{
+    background:rgba(224,88,79,.12); border:1px solid rgba(224,88,79,.4);
+    color:#f5b3ae; border-radius:10px; padding:12px; font-size:13px; margin-top:10px;
+  }
+  .hidden{display:none !important;}
+  .hint{font-size:11.5px; color:var(--steel); margin-top:8px; line-height:1.5;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">H/KMC Part 2D Barcode · Field Check</div>
+  <h1>Part Barcode Checker</h1>
+  <p>Scan or paste a Data Matrix payload to verify ISO/IEC 15434 structure.</p>
+</header>
+
+<main>
+  <div class="tabs">
+    <div class="tab active" data-tab="scan">Scan</div>
+    <div class="tab" data-tab="paste">Paste text</div>
+  </div>
+
+  <!-- SCAN TAB -->
+  <section id="tab-scan">
+    <div class="card">
+      <h2>Camera</h2>
+      <div id="scanner-wrap">
+        <video id="video" playsinline muted></video>
+        <div id="reticle"></div>
+        <div id="scan-status">Tap Start to scan</div>
+      </div>
+      <div class="scan-controls">
+        <button class="btn-primary" id="btnStart" style="flex:1">Start camera</button>
+        <button class="btn-ghost" id="btnStop" style="flex:1" disabled>Stop</button>
+      </div>
+      <p class="hint">Data Matrix codes are small — fill most of the frame and hold steady. If your part uses direct laser marking (low contrast), the paste option is more reliable.</p>
+    </div>
+  </section>
+
+  <!-- PASTE TAB -->
+  <section id="tab-paste" class="hidden">
+    <div class="card">
+      <h2>Raw payload</h2>
+      <textarea id="pasteInput" placeholder="[)>...06...V...P...S...T..." class="mono"></textarea>
+      <div class="scan-controls">
+        <button class="btn-primary" id="btnParse" style="flex:1">Check</button>
+        <button class="btn-ghost" id="btnClear">Clear</button>
+      </div>
+      <p class="hint">Paste the exact scanned string. If your scanner outputs bracket notation instead of real control characters, that's fine — &lt;RS&gt;, &lt;GS&gt;, &lt;EOT&gt; (any case) are recognized too.</p>
+    </div>
+  </section>
+
+  <div class="card" id="rawCard" style="display:none">
+    <h2>Barcode content</h2>
+    <div class="raw-highlight mono" id="rawOut"></div>
+  </div>
+
+  <div class="card">
+    <h2>H/KMC Part 2D Barcode Standard</h2>
+    <div id="resultBody">
+      <div class="empty">No barcode checked yet.</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxing-library/0.20.0/index.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  const RS = "\u001E", GS = "\u001D", EOT = "\u0004";
+
+  // ---------- tabs ----------
+  const tabs = document.querySelectorAll(".tab");
+  const panels = { scan: document.getElementById("tab-scan"), paste: document.getElementById("tab-paste") };
+  tabs.forEach(t => t.addEventListener("click", () => {
+    tabs.forEach(x => x.classList.remove("active"));
+    t.classList.add("active");
+    Object.values(panels).forEach(p => p.classList.add("hidden"));
+    panels[t.dataset.tab].classList.remove("hidden");
+    if (t.dataset.tab !== "scan") stopScan();
+  }));
+
+  // ---------- normalize bracket notation to real control chars ----------
+  function normalize(raw){
+    return raw
+      .replace(/<\s*RS\s*>/gi, RS)
+      .replace(/<\s*GS\s*>/gi, GS)
+      .replace(/<\s*EOT\s*>/gi, EOT)
+      .replace(/\{RS\}/gi, RS)
+      .replace(/\{GS\}/gi, GS)
+      .replace(/\{EOT\}/gi, EOT)
+      .trim();
+  }
+
+  // ---------- render the colored raw string, like the reference app ----------
+  function renderRaw(str){
+    const box = document.getElementById("rawOut");
+    const card = document.getElementById("rawCard");
+    let html = "";
+    for (const ch of str){
+      if (ch === RS) html += '<span class="ctl">R<sub>S</sub></span>';
+      else if (ch === GS) html += '<span class="ctl">G<sub>S</sub></span>';
+      else if (ch === EOT) html += '<span class="ctl">E<sub>O</sub><sub>T</sub></span>';
+      else html += escapeHtml(ch);
+    }
+    box.innerHTML = html;
+    card.style.display = "block";
+  }
+  function escapeHtml(s){
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  // ---------- parser for the H/KMC Format 06 structure ----------
+  // [)>{RS}06{GS}V<supplier>{GS}P<partNumber>{GS}S<sequence>{GS}T<date6><4M4><flag1><trace7+>{GS}{RS}{EOT}
+  function parseHKMC(str){
+    const rows = [];       // {label, ok, data, group}
+    let ok = true;
+    const fail = (label, data, group) => { ok = false; rows.push({label, ok:false, data: data ?? "—", group}); };
+    const pass = (label, data, group) => rows.push({label, ok:true, data, group});
+
+    if (!str.startsWith("[)>" + RS + "06")){
+      fail("Header", str.slice(0,6) || "(empty)");
+      return { ok:false, rows, error: "Header should start with [)>﹤RS﹥06 — this doesn't look like an ISO/IEC 15434 Format 06 payload." };
+    }
+    pass("Header", "[)&gt;R\u2093S06".replace("R\u2093S","R<sub>S</sub>"));
+
+    const body = str.slice(6); // after [)> RS 06
+    const segs = body.split(GS).filter(s => s.length > 0 || s === "");
+    // last segment(s) may contain RS + EOT trailer
+    let trailerOk = false;
+    let cleanSegs = [];
+    for (let seg of segs){
+      if (seg.includes(RS) && seg.includes(EOT)){
+        trailerOk = true;
+        seg = seg.replace(RS,"").replace(EOT,"");
+        if (seg.length) cleanSegs.push(seg);
+      } else {
+        cleanSegs.push(seg);
+      }
+    }
+
+    let sawV=false, sawP=false, sawS=false, sawT=false;
+    for (const seg of cleanSegs){
+      const tag = seg[0];
+      const val = seg.slice(1);
+      if (tag === "V"){ sawV=true; pass("Supplier Code", val, "Spec"); }
+      else if (tag === "P"){ sawP=true; pass("Part Number", val, "Spec"); }
+      else if (tag === "S"){ sawS=true; pass("Sequence Code", val, "Spec"); }
+      else if (tag === "T"){
+        sawT=true;
+        // date(6) + 4M(4) + flag(1: A or @) + traceNo(rest, >=7 typically)
+        if (val.length < 12){
+          fail("Production date / 4M / Trace", val, "Traceability");
+        } else {
+          const date = val.slice(0,6);
+          const fourM = val.slice(6,10);
+          const flag = val.slice(10,11);
+          const trace = val.slice(11);
+          pass("Production date", date, "Traceability");
+          pass("Part 4M", fourM, "Traceability");
+          if (flag === "A" || flag === "@") pass("A or @", flag, "Traceability");
+          else fail("A or @", flag || "(missing)", "Traceability");
+          if (trace.length >= 7) pass("Trace No. (7~)", trace, "Traceability");
+          else fail("Trace No. (7~)", trace || "(missing)", "Traceability");
+        }
+      } else if (seg.length) {
+        fail("Unrecognized segment", seg, "Spec");
+      }
+    }
+    if (!sawV) fail("Supplier Code", "(not found)", "Spec");
+    if (!sawP) fail("Part Number", "(not found)", "Spec");
+    if (!sawS) fail("Sequence Code", "(not found)", "Spec");
+    if (!sawT) fail("Production date / 4M / Trace", "(not found)", "Traceability");
+
+    if (trailerOk) pass("Trailer", "R<sub>S</sub>E<sub>O</sub><sub>T</sub>");
+    else fail("Trailer", "(missing RS/EOT)");
+
+    return { ok, rows };
+  }
+
+  function renderResult(result){
+    const body = document.getElementById("resultBody");
+    if (result.error){
+      body.innerHTML = `<div class="err">${escapeHtml(result.error)}</div>`;
+      return;
+    }
+    let lastGroup = null;
+    let html = "<table><tbody>";
+    for (const row of result.rows){
+      if (row.group && row.group !== lastGroup){
+        lastGroup = row.group;
+        html += `<tr class="group-head"><td colspan="3">${row.group}</td></tr>`;
+      }
+      html += `<tr>
+        <td class="col-item">${escapeHtml(row.label)}</td>
+        <td class="col-result ${row.ok ? "r-ok" : "r-fail"}">${row.ok ? "OK" : "FAIL"}</td>
+        <td class="col-data">${row.data.includes("<sub") ? row.data : escapeHtml(row.data)}</td>
+      </tr>`;
+    }
+    html += "</tbody></table>";
+    body.innerHTML = html;
+  }
+
+  function runCheck(raw){
+    if (!raw || !raw.trim()){
+      document.getElementById("resultBody").innerHTML = '<div class="empty">No barcode checked yet.</div>';
+      document.getElementById("rawCard").style.display = "none";
+      return;
+    }
+    const norm = normalize(raw);
+    renderRaw(norm);
+    const result = parseHKMC(norm);
+    renderResult(result);
+  }
+
+  // ---------- paste tab ----------
+  document.getElementById("btnParse").addEventListener("click", () => {
+    runCheck(document.getElementById("pasteInput").value);
+  });
+  document.getElementById("btnClear").addEventListener("click", () => {
+    document.getElementById("pasteInput").value = "";
+    runCheck("");
+  });
+
+  // ---------- camera scan (ZXing) ----------
+  let codeReader = null;
+  let scanning = false;
+
+  async function startScan(){
+    const statusEl = document.getElementById("scan-status");
+    try{
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.DATA_MATRIX,
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.CODE_128
+      ]);
+      codeReader = new ZXing.BrowserMultiFormatReader(hints);
+      const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+      const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length-1];
+      statusEl.textContent = "Scanning…";
+      document.getElementById("btnStart").disabled = true;
+      document.getElementById("btnStop").disabled = false;
+      scanning = true;
+
+      codeReader.decodeFromVideoDevice(backCam ? backCam.deviceId : undefined, "video", (result, err) => {
+        if (result && scanning){
+          statusEl.textContent = "Captured ✓";
+          runCheck(result.getText());
+          stopScan();
+        }
+      });
+    } catch(e){
+      statusEl.textContent = "Camera unavailable — use Paste text instead.";
+      document.getElementById("btnStart").disabled = false;
+      document.getElementById("btnStop").disabled = true;
+    }
+  }
+
+  function stopScan(){
+    scanning = false;
+    if (codeReader){
+      try { codeReader.reset(); } catch(e){}
+    }
+    document.getElementById("btnStart").disabled = false;
+    document.getElementById("btnStop").disabled = true;
+    const statusEl = document.getElementById("scan-status");
+    if (statusEl.textContent === "Scanning…") statusEl.textContent = "Tap Start to scan";
+  }
+
+  document.getElementById("btnStart").addEventListener("click", startScan);
+  document.getElementById("btnStop").addEventListener("click", stopScan);
+})();
+</script>
+</body>
+</html>
